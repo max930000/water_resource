@@ -1,0 +1,36 @@
+{
+  // VS Code 的執行/除錯設定。按 F5 就會照這裡的設定啟動，
+  // 不用每次手動 cd、手動 Activate venv —— 這樣就不會再遇到
+  // 「站錯資料夾導致 Could not import module app.main」那個坑。
+  //
+  // 關鍵是每個設定裡的 "cwd"：它強制把工作目錄設成 backend，
+  // 所以 uvicorn 一定找得到 app 資料夾。
+  // 用哪個 Python 則由 .vscode/settings.json 的 defaultInterpreterPath 決定（= venv）。
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // 平常開發用這個：改檔案自動重啟
+      "name": "FastAPI 開發（自動重啟）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--reload", "--host", "127.0.0.1", "--port", "8000"],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      // 要下中斷點抓 bug 時用這個。
+      // 為什麼要分開：--reload 會另外開一個子程序來跑你的程式，
+      // 中斷點常常掛不上去。拿掉 --reload 才能穩定停在中斷點。
+      "name": "FastAPI 除錯（可下中斷點，不自動重啟）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ]
+}

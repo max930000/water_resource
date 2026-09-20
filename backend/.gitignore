@@ -1,0 +1,25 @@
+# 虛擬環境：幾千個檔案，而且換台電腦就不能用，一定不能進 Git
+.venv/
+venv/
+
+# Python 位元碼快取
+__pycache__/
+*.py[cod]
+
+# 環境變數與密鑰：絕對不能進 Git
+.env
+.env.local
+
+# 測試與工具快取
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# 使用者上傳的檔案
+uploads/
+
+# SQLite 資料庫檔（開發用，不該版控）
+*.db
+*.sqlite3

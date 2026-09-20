@@ -1,0 +1,55 @@
+{
+  // ── Python 解譯器 ──
+  // 這一行取代了「Ctrl+Shift+P → Python: Select Interpreter」的手動選取。
+  // 寫成設定檔的好處：進 Git 之後隊友 clone 下來就直接生效，
+  // 不用每個人都被「fastapi 找不到」卡一次。
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+
+  // 開新終端機時自動啟動 venv，省掉每次手打 Activate.ps1
+  "python.terminal.activateEnvironment": true,
+
+  // 新開的終端機直接站在 backend 資料夾。
+  // 為什麼：uvicorn app.main:app 和 python -m app.xxx 都是從「目前資料夾」
+  // 開始找 app 套件，站在專案根目錄就會噴 ModuleNotFoundError: No module named 'app'。
+  // 之後開始寫前端時，改成 ${workspaceFolder} 或直接 cd frontend 即可。
+  "terminal.integrated.cwd": "${workspaceFolder}/backend",
+
+  // 讓 Pylance 知道 import 的根目錄是 backend，
+  // 這樣 `from app.xxx import yyy` 才不會被畫紅線
+  "python.analysis.extraPaths": ["${workspaceFolder}/backend"],
+  "python.analysis.typeCheckingMode": "basic",
+
+  // ── 換行字元 ──
+  // Windows 預設是 CRLF，但 Docker 容器裡是 Linux（只吃 LF）。
+  // 統一用 LF，避免之後 shell script 出現 "bad interpreter: ^M" 這種鬼問題。
+  "files.eol": "\n",
+
+  // ── Python 縮排：4 個空格，不用 Tab ──
+  // 這是 PEP 8 的規定，混用 Tab 和空格會噴 TabError 而且肉眼看不出來
+  "[python]": {
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.rulers": [88]
+  },
+
+  // 前端之後會用 2 空格（JS/TS/Vue 的慣例）
+  "[json]": { "editor.tabSize": 2 },
+  "[yaml]": { "editor.tabSize": 2, "editor.insertSpaces": true },
+
+  // 存檔時自動刪掉行尾多餘空白、確保檔案結尾有換行
+  // （這兩件事不做，git diff 會出現一堆看不見的雜訊）
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  // 把這些雜訊從檔案總管藏起來，專案結構才看得清楚
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true
+  },
+
+  // 搜尋時跳過這些，不然 Ctrl+Shift+F 會被 venv 裡的套件洗版
+  "search.exclude": {
+    "**/.venv": true,
+    "**/node_modules": true
+  }
+}
