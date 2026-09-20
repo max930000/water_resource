@@ -1,0 +1,13 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  background: #f8fafc;
+  color: #0f172a;
+}

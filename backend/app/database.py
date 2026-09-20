@@ -8,19 +8,26 @@
 """
 
 from collections.abc import Generator
+from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 # ── 1. 資料庫位置 ──────────────────────────────────────
-# sqlite:///./townquest.db
-#   sqlite  → 用哪種資料庫
-#   ///     → 後面接檔案路徑
-#   ./      → 相對於「你執行 uvicorn 的那個資料夾」，也就是 backend/
+# Path(__file__) 是「這個檔案本身」的路徑：
+#   .resolve()     → 轉成絕對路徑
+#   .parent        → app/
+#   .parent.parent → backend/
+#
+# 用絕對路徑而不是 "./townquest.db"，是為了避免一個很難查的陷阱：
+# "./" 指的是「執行指令時所在的資料夾」，所以從不同目錄啟動
+# 會各自建出一個空的資料庫檔案，然後你會以為「資料不見了」。
 #
 # 之後換 PostgreSQL 時，只有這一行要改：
-#   postgresql+psycopg://townquest:townquest@localhost:5432/townquest
-DATABASE_URL = "sqlite:///./townquest.db"
+#   DATABASE_URL = "postgresql+psycopg://townquest:townquest@localhost:5432/townquest"
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+DATABASE_URL = f"sqlite:///{BACKEND_DIR / 'townquest.db'}"
 
 
 # ── 2. Engine：連線池，整個程式只有一個 ────────────────
@@ -38,6 +45,26 @@ engine = create_engine(
     # 之後抓 N+1 問題全靠它。正式環境要關掉（太吵而且會洩漏資料）。
     echo=True,
 )
+
+
+# ── 2.5 ⚠ SQLite 必做：每條連線都要打開外鍵強制 ──────────
+# SQLite 為了向後相容，**預設不強制外鍵約束**。
+# 也就是說 models.py 裡的 ForeignKey 只是「宣告」，資料庫根本不檢查——
+# 你可以寫入一個 station_id=888888 的回報，指向不存在的站點，
+# 完全不會報錯。這種孤兒資料之後查詢時會神秘地消失或炸掉。
+#
+# 而且這個設定是「每條連線」而不是「每個資料庫」，
+# 所以必須掛在 connect 事件上，讓每次新建連線都執行一次。
+#
+# PostgreSQL 預設就會強制外鍵，換過去之後這段不會生效（也不需要），
+# 但留著無害 —— 所以用 dialect 判斷而不是直接刪掉。
+@event.listens_for(Engine, "connect")
+def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):
+    # 只對 SQLite 生效。用 module 名稱判斷比用字串比對 URL 可靠。
+    if type(dbapi_connection).__module__.startswith("sqlite3"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 # ── 3. SessionLocal：Session 的「工廠」 ────────────────

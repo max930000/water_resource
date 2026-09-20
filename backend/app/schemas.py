@@ -11,7 +11,9 @@ API 的輸入 / 輸出格式（Pydantic schema）。
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from .models import ReportStatus, ReportType
 
 
 class StationSummary(BaseModel):
@@ -35,6 +37,9 @@ class StationSummary(BaseModel):
     lat: float
     lon: float
     status: str | None
+    # 這座站目前有幾筆「待處理」回報。地圖上用它決定標紅點還是綠點。
+    # 不是資料庫欄位，是每次查詢時算出來的。
+    open_report_count: int = 0
 
 
 class StationDetail(StationSummary):
@@ -86,3 +91,76 @@ class DistrictGroup(BaseModel):
 
     city: str
     districts: list[str]
+class StationNearby(StationSummary):
+    """
+    「附近」查詢的結果，比 Summary 多一個距離欄位。
+
+    distance_meters 不是資料庫欄位，是每次查詢依使用者位置「算出來」的 ——
+    所以它只能存在於 schema，不可能出現在 models.py。
+
+    這正好示範了為什麼 schema 和 model 要分開：
+    API 回傳的東西，不一定跟資料庫存的東西一樣。
+    """
+
+    distance_meters: float
+
+
+class ReportCreate(BaseModel):
+    """
+    建立回報的「輸入」格式。
+
+    ⚠ 最重要的觀念：輸入和輸出 schema 一定要分開。
+
+    如果用同一個 schema 當輸入又當輸出，使用者就能在 POST 的 body 裡塞
+    {"id": 1, "status": "RESOLVED", "created_at": "1999-01-01"} ——
+    自己指定 id、自己把案件標記成已完成、自己偽造時間。
+
+    輸入 schema 只放「使用者有權決定」的欄位。
+    id、status、created_at 都由伺服器決定，所以不出現在這裡。
+    """
+
+    type: ReportType
+    # Field 用來加驗證規則。max_length=500 要跟 models.py 的 String(500) 一致，
+    # 不然超長字串會過得了 API、卻在寫入資料庫時炸掉（500 錯誤，很難查）。
+    description: str | None = Field(None, max_length=500, description="補充說明")
+
+
+class ReportOut(BaseModel):
+    """回報的「輸出」格式。比輸入多了伺服器決定的欄位。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    station_id: int
+    # 這個欄位對應 models.py 裡的 station_name property。
+    # from_attributes 讀的是「屬性」，property 也算，所以拿得到。
+    station_name: str
+    type: ReportType
+    description: str | None
+    status: ReportStatus
+    admin_note: str | None
+    created_at: datetime
+    resolved_at: datetime | None
+
+
+class ReportPage(BaseModel):
+    """回報的分頁結果，格式跟 StationPage 一致。"""
+
+    items: list[ReportOut]
+    page: int
+    size: int
+    total: int
+    total_pages: int
+
+
+class ReportUpdate(BaseModel):
+    """
+    更新回報的輸入格式（PATCH 用）。
+
+    兩個欄位都是選填 —— 維護人員只送他要改的部分。
+    沒列在這裡的欄位（id、created_at、type…）使用者一律改不到，
+    這就是防止偽造的方式。
+    """
+
+    status: ReportStatus | None = None
+    admin_note: str | None = Field(None, max_length=500, description="給市民看的處理說明")
