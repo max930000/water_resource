@@ -1,0 +1,66 @@
+# 一行指令把整套跑起來：
+#   docker compose up -d --build
+#
+# 三個容器：
+#   db        PostgreSQL 資料庫
+#   backend   FastAPI（啟動時自動跑 migration）
+#   frontend  Vue 編譯後的靜態檔案，用 nginx 提供
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: townquest-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-townquest}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-townquest}
+      POSTGRES_DB: ${POSTGRES_DB:-townquest}
+      TZ: Asia/Taipei
+    ports:
+      - "5432:5432"
+    volumes:
+      # named volume：資料存在容器外面。
+      # docker compose down 資料還在，down -v 才會刪掉。
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # 「容器有在跑」不等於「資料庫可以接受連線」。
+      # 沒有這個檢查，backend 會在資料庫還沒準備好時就去連，然後啟動失敗。
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-townquest} -d ${POSTGRES_DB:-townquest}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: townquest-backend
+    environment:
+      # 注意主機名稱是 db，不是 localhost。
+      # 容器之間用「服務名稱」互相找得到，這是 Docker 內建的 DNS。
+      # 寫 localhost 的話，backend 會去找「自己容器裡的 5432」，當然找不到。
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-townquest}:${POSTGRES_PASSWORD:-townquest}@db:5432/${POSTGRES_DB:-townquest}
+      CORS_ORIGINS: "http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:5173,http://localhost:5173"
+      SQL_ECHO: "0"
+      TZ: Asia/Taipei
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # 瀏覽器是在「你的電腦」上跑，不是在容器裡，
+        # 所以這裡要填你從瀏覽器看得到的後端位址（主機的 8000 埠）。
+        VITE_API_BASE: http://127.0.0.1:8000
+    container_name: townquest-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:

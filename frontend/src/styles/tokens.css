@@ -1,0 +1,54 @@
+/*
+ * 設計 token —— 三層架構（見 .claude/skills/design-system）
+ *
+ *   Layer 1  Primitive  原始色值（本檔）        --tp-*
+ *   Layer 2  Semantic   用途命名（style.css）    bg-action、text-ink …
+ *   Layer 3  Component  元件專用（本檔下方）      --marker-*
+ *
+ * 元件裡不准寫 hex 色碼。要換色只改這個檔。
+ * 所有文字組合都已驗證 WCAG 對比度（一般文字 ≥ 4.5:1，非文字 ≥ 3:1）。
+ */
+
+/* ── Layer 1：台北通官方色 ───────────────────────────── */
+:root {
+  --tp-primary-50: #EDF8FA;
+  --tp-primary-100: #DBF1F5;
+  --tp-primary-500: #5AB4C5; /* 官方主色。白字只有 2.39:1，不能承載文字 */
+  --tp-primary-700: #356C77; /* 白字 5.89:1 → 按鈕、連結 */
+  --tp-primary-800: #22474E;
+
+  --tp-secondary-50: #FDF8ED;
+  --tp-secondary-500: #F5BA4B; /* 琥珀底一律配深色字，白字只有 1.75:1 */
+  --tp-secondary-800: #74521B;
+
+  --tp-grey-50: #F1F3F4;
+  --tp-grey-100: #E3E7E5;
+  --tp-grey-200: #CAD1D5;
+  --tp-grey-600: #5E6D76; /* 次要文字最淺只能到這階（Grey/500 只有 3.66:1）*/
+  --tp-grey-800: #30383D;
+  --tp-grey-950: #0B0D0E;
+
+  /* 官方紅 #D45251 對白只有 4.10:1。以下為同色相自行加深： */
+  --tp-red-50: #FCEDED;
+  --tp-red-300: #E29494; /* 官方 Red/300 */
+  --tp-red-600: #D04241; /* 對白 4.63:1 → 圖示、地圖標記外框 */
+  --tp-red-700: #C63231; /* 對淡紅底 4.74:1 → 徽章與錯誤訊息文字 */
+
+  --tp-white: #FFFFFF;
+}
+
+/* ── Layer 3：地圖標記（Leaflet 在 JS 裡畫，要從這裡讀色）──── */
+:root {
+  --marker-ok-stroke: var(--tp-primary-700);
+  --marker-ok-fill: var(--tp-primary-500);
+  --marker-bad-stroke: var(--tp-red-600);
+  --marker-bad-fill: var(--tp-red-300);
+  --marker-me-stroke: var(--tp-white);
+  --marker-me-fill: var(--tp-grey-800);
+}
+
+/* ── 尺寸 token ───────────────────────────────────────── */
+:root {
+  --size-touch-target: 44px; /* 觸控目標下限（Apple HIG 44pt / Material 48dp）*/
+  --size-map-control-glyph: 22px;
+}

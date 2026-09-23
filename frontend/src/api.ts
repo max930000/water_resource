@@ -1,7 +1,9 @@
 // 所有跟後端說話的程式碼都集中在這裡。
 // 之後換網址、加驗證 header，只要改這一個檔案。
 
-const BASE = 'http://127.0.0.1:8000'
+// 後端位址。優先讀建置時的環境變數，沒設定就用本機開發的預設值。
+// Docker 打包時會透過 VITE_API_BASE 指定，不用改程式碼。
+const BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000'
 
 async function request(path: string, init?: RequestInit, params: Record<string, string | number> = {}) {
   const qs = new URLSearchParams(

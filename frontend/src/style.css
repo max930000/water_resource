@@ -1,13 +1,83 @@
 @import "tailwindcss";
+@import "./styles/tokens.css";
 @import "leaflet/dist/leaflet.css";
 
-html, body, #app {
+/*
+ * Layer 2 Semantic —— 用途命名
+ *
+ * Tailwind v4 沒有 tailwind.config.js，自訂 token 寫在 @theme。
+ * 這裡定義的每個 --color-xxx 都會變成 utility：bg-xxx、text-xxx、border-xxx。
+ * `inline` 讓 utility 直接引用 var(--tp-*)，改 tokens.css 就全站生效。
+ */
+@theme inline {
+  --color-brand: var(--tp-primary-500);         /* 品牌裝飾，不承載文字 */
+  --color-action: var(--tp-primary-700);        /* 主要按鈕、連結、選中狀態 */
+  --color-action-hover: var(--tp-primary-800);
+  --color-action-soft: var(--tp-primary-50);    /* 選中淡底、已完成徽章底 */
+
+  --color-ink: var(--tp-grey-950);              /* 內文 */
+  --color-ink-muted: var(--tp-grey-600);        /* 次要文字 */
+  --color-ink-strong: var(--tp-grey-800);       /* 未選中的分段按鈕文字 */
+  --color-line: var(--tp-grey-100);             /* 分隔線、卡片框 */
+  --color-line-strong: var(--tp-grey-200);      /* 輸入框邊框 */
+  --color-surface: var(--tp-white);             /* 卡片 */
+  --color-canvas: var(--tp-grey-50);            /* 頁面底色 */
+
+  --color-danger: var(--tp-red-700);            /* 待處理、錯誤 —— 文字用 */
+  --color-danger-icon: var(--tp-red-600);       /* 待處理 —— 圖示用 */
+  --color-danger-soft: var(--tp-red-50);
+  --color-warning: var(--tp-secondary-500);
+  --color-warning-ink: var(--tp-secondary-800); /* 琥珀底上的文字 */
+  --color-warning-soft: var(--tp-secondary-50);
+
+  /*
+   * 中文字體用系統內建，不從 Google Fonts 載入：
+   * 繁中字型檔動輒數 MB，嵌在台北通 WebView 裡會拖慢首次開啟。
+   * PingFang 是台北通官方指定字體（iOS 內建）。
+   */
+  --font-sans: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+}
+
+html,
+body,
+#app {
   height: 100%;
   margin: 0;
 }
 
 body {
-  font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
-  background: #f8fafc;
-  color: #0f172a;
+  font-family: var(--font-sans);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  /* 消除行動裝置點擊的 300ms 延遲與灰色閃爍 */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 鍵盤操作時焦點一定要看得見（無障礙規則：不准只拿掉 outline） */
+:focus-visible {
+  outline: 3px solid var(--tp-primary-700);
+  outline-offset: 2px;
+}
+
+/* 使用者在系統設定「減少動態效果」時，關掉所有轉場 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Leaflet 內建縮放按鈕預設只有 30×30px，低於觸控目標下限 44px。
+ * 觸控裝置上 Leaflet 會加 .leaflet-touch，覆寫它的尺寸。
+ */
+.leaflet-touch .leaflet-bar a,
+.leaflet-bar a {
+  width: var(--size-touch-target);
+  height: var(--size-touch-target);
+  line-height: var(--size-touch-target);
+  font-size: var(--size-map-control-glyph);
 }

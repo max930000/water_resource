@@ -1,0 +1,35 @@
+# 判斷原則：能用別的東西重新產生的，就不要進 Git。
+
+# --- 前端 ---
+# node_modules 靠 package.json 重生（npm install）
+node_modules/
+# dist 靠 npm run build 重生
+dist/
+# Vite 的暫存快取
+.vite/
+*.local
+
+# --- 後端 ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+# SQLite 資料庫檔：靠 alembic upgrade head + python -m app.sync 重生
+*.db
+*.sqlite3
+
+# --- 環境設定 ---
+# .env 裝的是密碼等機密，只把 .env.example 放進 Git
+.env
+.env.*
+!.env.example
+
+# --- 編輯器與作業系統 ---
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# --- AI 工具設定（本機用，不影響專案執行）---
+.claude/

@@ -7,6 +7,7 @@
 注意：整個檔案不會 import fastapi —— 它跟 Web 框架完全無關。
 """
 
+import os
 from collections.abc import Generator
 from pathlib import Path
 
@@ -15,35 +16,39 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 # ── 1. 資料庫位置 ──────────────────────────────────────
-# Path(__file__) 是「這個檔案本身」的路徑：
-#   .resolve()     → 轉成絕對路徑
-#   .parent        → app/
-#   .parent.parent → backend/
+# 優先讀環境變數 DATABASE_URL；沒設定就退回本機的 SQLite 檔案。
 #
-# 用絕對路徑而不是 "./townquest.db"，是為了避免一個很難查的陷阱：
-# "./" 指的是「執行指令時所在的資料夾」，所以從不同目錄啟動
-# 會各自建出一個空的資料庫檔案，然後你會以為「資料不見了」。
+# 為什麼要這樣設計：
+#   同一份程式碼要能跑在不同環境 —— 你的筆電用 SQLite，
+#   Docker 裡用 PostgreSQL，正式機用雲端資料庫。
+#   差別只在「啟動時給什麼環境變數」，程式碼一個字都不用改。
+#   這是十二要素應用（12-Factor App）的核心原則：設定與程式碼分離。
 #
-# 之後換 PostgreSQL 時，只有這一行要改：
-#   DATABASE_URL = "postgresql+psycopg://townquest:townquest@localhost:5432/townquest"
+# 絕對不要把正式環境的密碼寫死在程式裡 —— 那會跟著進 Git。
 BACKEND_DIR = Path(__file__).resolve().parent.parent
-DATABASE_URL = f"sqlite:///{BACKEND_DIR / 'townquest.db'}"
+DEFAULT_SQLITE_URL = f"sqlite:///{BACKEND_DIR / 'townquest.db'}"
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
+
+IS_SQLITE = DATABASE_URL.startswith("sqlite")
 
 
 # ── 2. Engine：連線池，整個程式只有一個 ────────────────
+# connect_args 只有 SQLite 需要：
+#   SQLite 預設禁止跨執行緒共用同一個連線，但 FastAPI 的同步端點
+#   會被丟到執行緒池執行，處理請求的執行緒跟建立連線的不一定相同，
+#   不關掉這個檢查就會噴：
+#     SQLite objects created in a thread can only be used in that same thread
+#   PostgreSQL 沒有這個限制，傳這個參數反而會出錯，所以要判斷。
 engine = create_engine(
     DATABASE_URL,
-    # SQLite 專屬設定。
-    # SQLite 預設禁止跨執行緒共用同一個連線，但 FastAPI 的同步端點
-    # 會被丟到執行緒池執行，處理請求的執行緒跟建立連線的不一定相同，
-    # 不關掉這個檢查就會噴：
-    #   SQLite objects created in a thread can only be used in that same thread
-    # 換成 PostgreSQL 時，這個參數要整段刪掉（PostgreSQL 沒這個限制）。
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False} if IS_SQLITE else {},
+    # PostgreSQL 專屬：每次拿連線前先確認它還活著。
+    # 資料庫重啟或連線閒置太久被切斷時，不加這個會拿到死掉的連線。
+    pool_pre_ping=not IS_SQLITE,
     # 把 SQLAlchemy 實際產生的 SQL 印到終端機。
-    # 開發階段一定要打開 —— 這是你唯一能看見「ORM 背後到底做了什麼」的方式。
-    # 之後抓 N+1 問題全靠它。正式環境要關掉（太吵而且會洩漏資料）。
-    echo=True,
+    # 開發時打開才看得見 ORM 背後做了什麼（抓 N+1 全靠它）。
+    # 正式環境要關掉：太吵，而且日誌裡會出現使用者資料。
+    echo=os.getenv("SQL_ECHO", "1") == "1",
 )
 
 

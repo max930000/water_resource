@@ -5,6 +5,8 @@ TownQuest API —— 應用程式入口。
 會拆成 routers/ 資料夾分檔管理。
 """
 
+import os
+
 # import 依 PEP 8 分成三段：標準函式庫 → 第三方套件 → 自己的模組
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,12 +42,14 @@ app = FastAPI(
 # allow_origins 要列出明確的網址，不要用 ["*"]：
 # 那等於允許網路上任何網站呼叫你的 API。
 # 之後上線時，這裡要換成台北通 WebView 實際使用的來源。
+# 允許的來源改由環境變數決定，這樣本機開發、Docker、正式環境
+# 可以用同一份程式碼，只換啟動時的設定。
+_DEFAULT_ORIGINS = "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8080,http://localhost:8080"
+_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", _DEFAULT_ORIGINS).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://127.0.0.1:5173",
-        "http://localhost:5173",
-    ],
+    allow_origins=_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

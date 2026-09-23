@@ -2,12 +2,20 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  api,
-  STATUS_LABEL,
-  TYPE_LABEL,
-  type Report,
-  type StationDetail,
-} from '../api'
+  PhArrowClockwise,
+  PhArrowSquareOut,
+  PhCaretLeft,
+  PhChatText,
+  PhCheckCircle,
+  PhDrop,
+  PhPhone,
+  PhSpinnerGap,
+  PhWarningCircle,
+} from '@phosphor-icons/vue'
+import { api, TYPE_LABEL, type Report, type StationDetail } from '../api'
+import StatusBadge from '../components/StatusBadge.vue'
+
+const MAX_LEN = 500
 
 const route = useRoute()
 const router = useRouter()
@@ -16,48 +24,60 @@ const stationId = Number(route.params.id)
 const station = ref<StationDetail | null>(null)
 const reports = ref<Report[]>([])
 const loading = ref(true)
-const message = ref('')
-const isError = ref(false)
+const loadError = ref('')
+const photoFailed = ref(false)
 
 // 回報表單
 const type = ref('NO_WATER')
 const description = ref('')
 const submitting = ref(false)
+const submitResult = ref<{ ok: boolean; text: string } | null>(null)
 
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
-    station.value = await api.station(stationId)
-    reports.value = await api.stationReports(stationId)
+    // 兩個請求互不相依，同時發出，而不是一個等一個
+    ;[station.value, reports.value] = await Promise.all([
+      api.station(stationId),
+      api.stationReports(stationId),
+    ])
   } catch (e) {
-    isError.value = true
-    message.value = e instanceof Error ? e.message : '載入失敗'
+    loadError.value = e instanceof Error ? e.message : '載入失敗'
   } finally {
     loading.value = false
   }
 }
 
 async function submit() {
+  if (submitting.value) return // 防止連點送出兩筆
   submitting.value = true
-  message.value = ''
-  isError.value = false
+  submitResult.value = null
   try {
     await api.createReport(stationId, {
       type: type.value,
-      description: description.value || undefined,
+      description: description.value.trim() || undefined,
     })
     description.value = ''
-    message.value = '回報已送出，感謝你讓城市更好'
-    await load()
+    submitResult.value = { ok: true, text: '回報已送出，維護單位處理後會在下方回覆' }
+    reports.value = await api.stationReports(stationId)
   } catch (e) {
-    isError.value = true
-    message.value = e instanceof Error ? e.message : '送出失敗'
+    // 錯誤訊息要說原因，並保留使用者剛打的內容，讓他能直接重送
+    submitResult.value = {
+      ok: false,
+      text: `送出失敗：${e instanceof Error ? e.message : '請稍後再試'}`,
+    }
   } finally {
     submitting.value = false
   }
 }
 
-// 後端回的時間沒有時區資訊，直接當本地時間顯示就好
+function goBack() {
+  // 從外部連結直接進來時沒有上一頁，退回地圖而不是關掉 WebView
+  if (window.history.state?.back) router.back()
+  else router.push('/')
+}
+
 function fmt(t: string | null) {
   return t ? t.replace('T', ' ').slice(0, 16) : '—'
 }
@@ -66,136 +86,240 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-slate-50 pb-6">
-    <button class="px-3 py-2 text-xs text-teal-700" @click="router.back()">← 返回地圖</button>
+  <div class="h-full overflow-y-auto pb-6">
+    <div class="sticky top-0 z-10 border-b border-line bg-surface/95 backdrop-blur">
+      <button
+        type="button"
+        class="inline-flex min-h-12 items-center gap-1 px-3 text-base font-medium text-action"
+        @click="goBack"
+      >
+        <PhCaretLeft :size="20" weight="bold" aria-hidden="true" />
+        返回地圖
+      </button>
+    </div>
 
-    <p v-if="loading" class="px-4 py-10 text-center text-sm text-slate-400">載入中…</p>
+    <!-- 載入中：骨架 -->
+    <div v-if="loading" aria-busy="true" aria-label="載入中" class="space-y-3 p-4">
+      <div class="h-7 w-2/3 animate-pulse rounded bg-line"></div>
+      <div class="h-4 w-1/2 animate-pulse rounded bg-line"></div>
+      <div class="aspect-video w-full animate-pulse rounded-xl bg-line"></div>
+    </div>
+
+    <div v-else-if="loadError" role="alert" class="m-4 rounded-xl bg-danger-soft p-4">
+      <p class="flex items-center gap-2 text-base font-medium text-danger">
+        <PhWarningCircle :size="20" weight="bold" aria-hidden="true" />
+        無法載入這座直飲臺
+      </p>
+      <p class="mt-1 text-sm text-danger">{{ loadError }}</p>
+      <button
+        type="button"
+        class="mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-surface px-4 text-sm font-medium text-danger"
+        @click="load"
+      >
+        <PhArrowClockwise :size="18" aria-hidden="true" />
+        重試
+      </button>
+    </div>
 
     <template v-else-if="station">
       <!-- 基本資料 -->
-      <section class="bg-white px-4 py-4">
-        <div class="flex items-start justify-between gap-2">
+      <section class="bg-surface px-4 pb-4 pt-3">
+        <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <h2 class="text-lg font-bold">{{ station.name }}</h2>
-            <p class="mt-0.5 text-xs text-slate-500">{{ station.address }}</p>
+            <h2 class="text-2xl font-semibold leading-8 text-ink">{{ station.name }}</h2>
+            <p class="mt-1 text-sm text-ink-muted">{{ station.address }}</p>
           </div>
           <span
-            class="shrink-0 rounded px-2 py-0.5 text-[11px]"
-            :class="station.status === '正常' ? 'bg-teal-100 text-teal-800' : 'bg-amber-100 text-amber-800'"
+            class="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium"
+            :class="station.status === '正常' ? 'bg-action-soft text-action' : 'bg-warning-soft text-warning-ink'"
           >
             {{ station.status ?? '狀態不明' }}
           </span>
         </div>
 
-        <img
-          v-if="station.photo_url"
-          :src="station.photo_url"
-          alt="直飲臺照片"
-          class="mt-3 h-40 w-full rounded object-cover"
-          loading="lazy"
-          @error="($event.target as HTMLImageElement).style.display = 'none'"
-        />
+        <!-- 圖片先用 aspect-video 保留空間，載入時版面才不會往下跳（CLS） -->
+        <div v-if="station.photo_url && !photoFailed" class="mt-3 aspect-video overflow-hidden rounded-xl bg-line">
+          <img
+            :src="station.photo_url"
+            :alt="`${station.name}的直飲臺外觀照片`"
+            width="640"
+            height="360"
+            loading="lazy"
+            class="h-full w-full object-cover"
+            @error="photoFailed = true"
+          />
+        </div>
 
-        <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-          <div><dt class="text-slate-400">行政區</dt><dd>{{ station.district ?? '—' }}</dd></div>
-          <div><dt class="text-slate-400">開放時間</dt><dd>{{ station.open_hours ?? '—' }}</dd></div>
-          <div><dt class="text-slate-400">場所類型</dt><dd>{{ station.place_type ?? '—' }}</dd></div>
-          <div><dt class="text-slate-400">設置地點</dt><dd>{{ station.install_spot ?? '—' }}</dd></div>
+        <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
+          <div>
+            <dt class="text-sm text-ink-muted">行政區</dt>
+            <dd class="text-base text-ink">{{ station.district ?? '—' }}</dd>
+          </div>
+          <div>
+            <dt class="text-sm text-ink-muted">開放時間</dt>
+            <dd class="text-base tabular-nums text-ink">{{ station.open_hours ?? '—' }}</dd>
+          </div>
+          <div>
+            <dt class="text-sm text-ink-muted">場所類型</dt>
+            <dd class="text-base text-ink">{{ station.place_type ?? '—' }}</dd>
+          </div>
+          <div>
+            <dt class="text-sm text-ink-muted">設置地點</dt>
+            <dd class="text-base text-ink">{{ station.install_spot ?? '—' }}</dd>
+          </div>
         </dl>
       </section>
 
-      <!-- 水質資訊：這是這個服務真正的差異化，市民原本根本看不到 -->
-      <section class="mt-2 bg-white px-4 py-4">
-        <h3 class="text-sm font-semibold">水質資訊</h3>
-        <dl class="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-          <div>
-            <dt class="text-slate-400">大腸桿菌數</dt>
-            <dd class="font-mono font-semibold text-teal-700">{{ station.coliform ?? '—' }}</dd>
+      <!-- 水質資訊：這個服務真正的差異化 —— 資料本來就公開，但市民從沒看過 -->
+      <section aria-labelledby="quality-heading" class="mt-2 bg-surface px-4 py-4">
+        <h3 id="quality-heading" class="flex items-center gap-2 text-base font-semibold text-ink">
+          <PhDrop :size="20" weight="fill" class="text-brand" aria-hidden="true" />
+          水質資訊
+        </h3>
+
+        <div class="mt-3 grid grid-cols-2 gap-3">
+          <div class="rounded-xl bg-action-soft p-3">
+            <p class="text-sm text-action">大腸桿菌數</p>
+            <p class="mt-1 text-2xl font-semibold tabular-nums text-action">
+              {{ station.coliform ?? '—' }}
+            </p>
           </div>
-          <div>
-            <dt class="text-slate-400">最近採樣</dt>
-            <dd>{{ fmt(station.last_sampled_at) }}</dd>
+          <div class="rounded-xl bg-canvas p-3">
+            <p class="text-sm text-ink-muted">最近採樣</p>
+            <p class="mt-1 text-base font-medium tabular-nums text-ink">
+              {{ fmt(station.last_sampled_at) }}
+            </p>
           </div>
-          <div><dt class="text-slate-400">維護單位</dt><dd>{{ station.maintainer ?? '—' }}</dd></div>
-          <div><dt class="text-slate-400">聯絡電話</dt><dd>{{ station.phone ?? '—' }}</dd></div>
+        </div>
+
+        <dl class="mt-3 space-y-2">
+          <div class="flex justify-between gap-4">
+            <dt class="text-sm text-ink-muted">維護單位</dt>
+            <dd class="text-right text-base text-ink">{{ station.maintainer ?? '—' }}</dd>
+          </div>
         </dl>
-        <a
-          v-if="station.quality_url"
-          :href="station.quality_url"
-          target="_blank"
-          rel="noopener"
-          class="mt-3 inline-block text-xs text-teal-700 underline"
-        >
-          查看北水處官方水質公開資訊 →
-        </a>
-        <p class="mt-2 text-[10px] text-slate-400">
-          資料同步時間：{{ fmt(station.synced_at) }}
-        </p>
+
+        <div class="mt-3 flex flex-wrap gap-2">
+          <a
+            v-if="station.phone"
+            :href="`tel:${station.phone}`"
+            class="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-line-strong px-3 text-sm font-medium text-action"
+          >
+            <PhPhone :size="18" aria-hidden="true" />
+            {{ station.phone }}
+          </a>
+          <a
+            v-if="station.quality_url"
+            :href="station.quality_url"
+            target="_blank"
+            rel="noopener"
+            class="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-line-strong px-3 text-sm font-medium text-action"
+          >
+            北水處官方水質資訊
+            <PhArrowSquareOut :size="16" aria-hidden="true" />
+            <span class="sr-only">（開啟新視窗）</span>
+          </a>
+        </div>
+
+        <p class="mt-3 text-xs text-ink-muted">資料同步時間：{{ fmt(station.synced_at) }}</p>
       </section>
 
       <!-- 回報表單 -->
-      <section class="mt-2 bg-white px-4 py-4">
-        <h3 class="text-sm font-semibold">回報這座直飲臺的狀況</h3>
-        <form class="mt-2 space-y-2" @submit.prevent="submit">
-          <select v-model="type" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">
-            <option v-for="(label, value) in TYPE_LABEL" :key="value" :value="value">
-              {{ label }}
-            </option>
-          </select>
-          <textarea
-            v-model="description"
-            rows="2"
-            maxlength="500"
-            placeholder="補充說明（選填，最多 500 字）"
-            class="w-full rounded border border-slate-300 px-2 py-2 text-sm"
-          ></textarea>
+      <section aria-labelledby="report-heading" class="mt-2 bg-surface px-4 py-4">
+        <h3 id="report-heading" class="text-base font-semibold text-ink">回報這座直飲臺的狀況</h3>
+
+        <form class="mt-3 space-y-4" novalidate @submit.prevent="submit">
+          <div>
+            <!-- 每個欄位都要有看得見的 label，不能只靠 placeholder -->
+            <label for="report-type" class="block text-sm font-medium text-ink">
+              狀況類型 <span class="text-danger" aria-hidden="true">*</span>
+            </label>
+            <select
+              id="report-type"
+              v-model="type"
+              required
+              class="mt-1 min-h-12 w-full rounded-lg border border-line-strong bg-surface px-3 text-base text-ink"
+            >
+              <option v-for="(label, value) in TYPE_LABEL" :key="value" :value="value">
+                {{ label }}
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <label for="report-desc" class="block text-sm font-medium text-ink">
+              補充說明（選填）
+            </label>
+            <textarea
+              id="report-desc"
+              v-model="description"
+              rows="3"
+              :maxlength="MAX_LEN"
+              aria-describedby="report-desc-help"
+              placeholder="例如：按了沒有出水，地上有積水"
+              class="mt-1 w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-base text-ink placeholder:text-ink-muted"
+            ></textarea>
+            <p id="report-desc-help" class="mt-1 text-right text-xs tabular-nums text-ink-muted">
+              {{ description.length }} / {{ MAX_LEN }}
+            </p>
+          </div>
+
           <button
             type="submit"
             :disabled="submitting"
-            class="w-full rounded bg-teal-700 py-2 text-sm font-medium text-white disabled:opacity-50"
+            :aria-busy="submitting"
+            class="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-action text-base font-semibold text-white transition-colors hover:bg-action-hover disabled:opacity-50"
           >
+            <PhSpinnerGap v-if="submitting" :size="20" class="animate-spin" aria-hidden="true" />
             {{ submitting ? '送出中…' : '送出回報' }}
           </button>
-        </form>
 
-        <p
-          v-if="message"
-          class="mt-2 rounded px-2 py-1.5 text-xs"
-          :class="isError ? 'bg-rose-50 text-rose-700' : 'bg-teal-50 text-teal-800'"
-        >
-          {{ message }}
-        </p>
+          <!-- 結果訊息放在按鈕旁邊，而不是頁面頂端 -->
+          <p
+            v-if="submitResult"
+            :role="submitResult.ok ? 'status' : 'alert'"
+            class="flex items-start gap-2 rounded-lg px-3 py-2 text-sm"
+            :class="submitResult.ok ? 'bg-action-soft text-action' : 'bg-danger-soft text-danger'"
+          >
+            <component
+              :is="submitResult.ok ? PhCheckCircle : PhWarningCircle"
+              :size="18"
+              weight="bold"
+              class="mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
+            {{ submitResult.text }}
+          </p>
+        </form>
       </section>
 
       <!-- 回報紀錄 -->
-      <section class="mt-2 bg-white px-4 py-4">
-        <h3 class="text-sm font-semibold">回報紀錄（{{ reports.length }}）</h3>
-        <ul class="mt-2 divide-y divide-slate-100">
-          <li v-for="r in reports" :key="r.id" class="py-2.5">
-            <div class="flex flex-wrap items-center gap-2 text-[11px]">
-              <span class="rounded bg-slate-100 px-1.5 py-0.5">{{ TYPE_LABEL[r.type] }}</span>
-              <span
-                class="rounded px-1.5 py-0.5"
-                :class="{
-                  'bg-rose-100 text-rose-700': r.status === 'OPEN',
-                  'bg-amber-100 text-amber-800': r.status === 'IN_PROGRESS',
-                  'bg-teal-100 text-teal-800': r.status === 'RESOLVED',
-                  'bg-slate-200 text-slate-600': r.status === 'REJECTED',
-                }"
-              >
-                {{ STATUS_LABEL[r.status] }}
-              </span>
-              <span class="ml-auto text-slate-400">{{ fmt(r.created_at) }}</span>
+      <section aria-labelledby="history-heading" class="mt-2 bg-surface px-4 py-4">
+        <h3 id="history-heading" class="text-base font-semibold text-ink">
+          回報紀錄
+          <span class="ml-1 text-sm font-normal text-ink-muted">（{{ reports.length }} 筆）</span>
+        </h3>
+
+        <ul v-if="reports.length" class="mt-2 divide-y divide-line">
+          <li v-for="r in reports" :key="r.id" class="py-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <StatusBadge :status="r.status" />
+              <span class="text-sm font-medium text-ink">{{ TYPE_LABEL[r.type] }}</span>
+              <time :datetime="r.created_at" class="ml-auto text-xs tabular-nums text-ink-muted">
+                {{ fmt(r.created_at) }}
+              </time>
             </div>
-            <p v-if="r.description" class="mt-1 text-xs text-slate-700">{{ r.description }}</p>
-            <p v-if="r.admin_note" class="mt-1 rounded bg-slate-50 px-2 py-1 text-xs text-slate-600">
-              維護單位回覆：{{ r.admin_note }}
-            </p>
+            <p v-if="r.description" class="mt-1.5 text-base text-ink">{{ r.description }}</p>
+            <div
+              v-if="r.admin_note"
+              class="mt-2 flex items-start gap-2 rounded-lg bg-canvas px-3 py-2 text-sm text-ink"
+            >
+              <PhChatText :size="18" class="mt-0.5 shrink-0 text-action" aria-hidden="true" />
+              <span><span class="font-medium">維護單位回覆：</span>{{ r.admin_note }}</span>
+            </div>
           </li>
         </ul>
-        <p v-if="!reports.length" class="py-4 text-center text-xs text-slate-400">
-          還沒有人回報過這座直飲臺
-        </p>
+        <p v-else class="py-6 text-center text-base text-ink-muted">還沒有人回報過這座直飲臺</p>
       </section>
     </template>
   </div>
