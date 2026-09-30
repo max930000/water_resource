@@ -4,6 +4,8 @@
 
 資料來自臺北市資料大平臺的「臺北市所屬直飲臺」開放資料（739 筆），後端用 FastAPI + PostgreSQL，前端用 Vue 3 + Leaflet，整套用 Docker Compose 一行指令啟動。
 
+後端另有一個 **Java Spring Boot 版本**（[`backend-spring/`](backend-spring)），提供完全相同的 REST API、共用同一個資料庫與前端，用來比較兩種框架的設計差異。
+
 > 這是為 CodeFest 2026（臺北秋季程式設計節）準備的練功專案，目前是 MVP 階段。
 
 ## 功能
@@ -24,22 +26,26 @@
           瀏覽器
             │
             ▼
-  ┌──────────────────┐     REST API     ┌──────────────────┐      ┌──────────────┐
-  │ frontend (nginx) │ ───────────────▶ │ backend (FastAPI)│ ───▶ │ db           │
-  │ Vue 3 + Leaflet  │   :8000/api/v1   │ SQLAlchemy       │      │ PostgreSQL 17│
-  │ :8080            │                  │ Alembic          │      │ :5432        │
-  └──────────────────┘                  └────────┬─────────┘      └──────────────┘
-                                                 │ python -m app.sync
-                                                 ▼
-                                     臺北市資料大平臺 (data.taipei)
+  ┌──────────────────┐     REST API     ┌──────────────────────┐      ┌──────────────┐
+  │ frontend (nginx) │ ──────┬────────▶ │ backend (FastAPI)    │ ───▶ │ db           │
+  │ Vue 3 + Leaflet  │       │  :8000   │ SQLAlchemy / Alembic │      │ PostgreSQL 17│
+  │ :8080            │       │          └──────────┬───────────┘      │ :5432        │
+  └──────────────────┘       │          ┌──────────┴───────────┐      │              │
+                             └───────▶  │ backend-spring       │ ───▶ │              │
+                        （二選一）:8081  │ Spring Boot / JPA    │      └──────────────┘
+                                        └──────────────────────┘
+                                                   │ python -m app.sync
+                                                   ▼
+                                       臺北市資料大平臺 (data.taipei)
 ```
 
 | 層 | 技術 |
 |---|---|
 | 前端 | Vue 3、TypeScript、Vue Router、Leaflet（OpenStreetMap 圖磚）、Tailwind CSS、Vite |
 | 後端 | Python 3.13、FastAPI、Pydantic、SQLAlchemy 2.0、Alembic、httpx |
+| 後端（Java 版） | Java 25、Spring Boot 4.1、Spring Data JPA（Hibernate）、Bean Validation、JUnit 5、Maven |
 | 資料庫 | PostgreSQL 17（本機開發可退回 SQLite，不用改程式碼） |
-| 部署 | Docker Compose（db / backend / frontend 三個容器） |
+| 部署 | Docker Compose（db / backend / backend-spring / frontend 四個容器） |
 
 ## 快速開始
 
@@ -56,6 +62,13 @@ docker compose exec backend python -m app.sync
 
 - 網站：http://localhost:8080
 - API 文件（Swagger）：http://localhost:8000/docs
+- Spring Boot 版 API：http://localhost:8081
+
+前端預設接 FastAPI。要改接 Spring Boot 版：
+
+```bash
+VITE_API_BASE=http://127.0.0.1:8081 docker compose up -d --build frontend
+```
 
 資料庫帳密預設寫在 `.env.example`，要改的話複製成 `.env` 再修改，`.env` 不會進 Git。
 
@@ -122,6 +135,10 @@ cd ..
 **設定與程式碼分離**
 
 資料庫位置、CORS 允許來源都由環境變數決定。同一份程式碼在筆電上用 SQLite，在 Docker 裡用 PostgreSQL，不用改任何一行。
+
+**兩個後端共用一個資料庫，但只有一方能改表**
+
+FastAPI 版與 Spring Boot 版讀寫同一個 PostgreSQL。資料表結構只由 Alembic 管理，Spring 設為 `ddl-auto=validate`，啟動時只檢查、不改表，兩邊的認知不一致時會直接啟動失敗。Spring 容器也會等 FastAPI 容器的健康檢查通過（代表 migration 已經跑完）才啟動。兩個版本的差異比較見 [`backend-spring/README.md`](backend-spring/README.md)。
 
 ## 已知限制與下一步
 
